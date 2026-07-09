@@ -65,10 +65,10 @@ function loadSnapshot(snapshot) {
   // 右下角 +/- 缩放控件 (Apple 药丸形, 见 style.css)
   L.control.zoom({ position: 'bottomright' }).addTo(MCMap.map);
 
-  // 瓦片层: tiles/{snapshot_id}/{z}/{x}/{y}.png (相对路径, 兼容 GH Pages 子路径)
+  // 瓦片层: tiles/{snapshot_id}/{z}/{x}/{y}.webp (相对路径, 兼容 GH Pages 子路径)
   // 原生瓦片仅在 zoom=0; zoom>0 用 zoom=0 放大, zoom<0 用 zoom=0 缩小
   MCMap.tileLayer = L.tileLayer(
-    `tiles/${snapshot.id}/{z}/{x}/{y}.png`,
+    `tiles/${snapshot.id}/{z}/{x}/{y}.webp`,
     {
       tms: false,
       minZoom: -4,               // 与 map.minZoom 一致, 允许 tileLayer 在负 zoom 提供 (复用 zoom=0)
