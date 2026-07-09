@@ -1,0 +1,29 @@
+# MC 游戏实例 (非地图项目)
+1.19.2TOBU0405/
+
+# 反编译/提取产物
+_decompiled/
+_jar_extracted/
+_decompile_extra.py
+
+# 原始瓦片源 (大文件, tobu4th/tiles/ 已含处理后的瓦片)
+map_source/
+
+# Xaero 路径点源 (私有)
+waypoint_source/
+
+# 参考下载 (Apple/高德地图参考)
+Apple 地图：路线、指南和交通信息.html
+Apple 地图：路线、指南和交通信息_files/
+gaode_reference.png
+data/screenshots/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 构建产物 (已提交 tobu4th/, 忽略临时)
+*.log
+hs_err_pid*.log

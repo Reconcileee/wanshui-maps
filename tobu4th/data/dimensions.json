@@ -1,0 +1,17 @@
+[
+  {
+    "id": 0,
+    "name": "主世界",
+    "max_zoom": 2,
+    "min_zoom": 0,
+    "tile_size": 512,
+    "origin_x": 0,
+    "origin_z": 0,
+    "mc_bounds": {
+      "min_x": -12800,
+      "max_x": 4096,
+      "min_z": -4096,
+      "max_z": 4608
+    }
+  }
+]

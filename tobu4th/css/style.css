@@ -1,0 +1,730 @@
+/* Apple 地图风格 - Minecraft 在线地图
+   核心: 深色模式, 磨砂玻璃控件 (backdrop-filter), SF Pro 字体,
+   右下角药丸形 +/-, 右上角圆形指南针, 圆角浮动面板 */
+:root {
+  /* Apple Maps 深色模式配色 (精确取自 shell.css .mw-dark + frame.html mk-dark-mode) */
+  --bg: #242424;                              /* Apple 地图 body 背景 */
+  /* 卡片液态玻璃: blur(50px) + #0009 (shell.css .mw-card dark) */
+  --panel: rgba(0, 0, 0, 0.6);               /* 卡片磨砂背景 */
+  /* 控件液态玻璃: blur(30px) + #12121299 (frame.html mk-dark-mode) */
+  --panel-control: rgba(18, 18, 18, 0.6);    /* 控件磨砂背景 (zoom/compass/btn) */
+  --panel-control-pressed: rgba(42, 42, 42, 0.6);  /* 控件按压状态 */
+  --panel-control-focus: rgba(12, 49, 89, 0.6);    /* 控件聚焦状态 */
+  --panel-solid: #1d1d1f;                     /* Apple popover-background */
+  --search-bar: rgba(0, 0, 0, 0.4);          /* Apple 搜索栏 #0006 */
+  --list-item: rgba(0, 0, 0, 0.3);           /* Apple 列表项 #0000004d */
+  --border: rgba(84, 84, 88, 0.55);         /* Apple separator-color #5454588c */
+  --border-light: rgba(255, 255, 255, 0.08);
+  --control-border: rgba(255, 255, 255, 0.05); /* Apple 控件细边框 (mk box-shadow 0.5px) */
+  --text: #ffffff;
+  --text-secondary: rgba(235, 235, 245, 0.6); /* Apple secondary-label #ebebf599 */
+  --text-tertiary: rgba(235, 235, 245, 0.3);  /* Apple tertiary-label #ebebf54d */
+  --icon-opacity: 0.55;                       /* Apple 控件图标默认透明度 */
+  --icon-opacity-active: 0.85;               /* Apple 控件图标 hover/active */
+  --accent: #0a84ff;                         /* Apple system blue (dark) */
+  --accent-hover: #409cff;
+  --accent-bg: rgba(10, 132, 255, 0.16);
+  --danger: #ff453a;                         /* Apple system red (dark) */
+  --success: #30d158;
+  --warning: #ffd60a;
+  --shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
+  --shadow-control: 0 0 0 0.5px rgba(255, 255, 255, 0.05);  /* Apple 控件细边框阴影 */
+  --shadow-focus: 0 0 0 2px rgb(0, 124, 255); /* Apple 聚焦蓝边 */
+  --radius: 12px;                            /* Apple 卡片圆角 */
+  --radius-md: 16px;                         /* Apple 搜索栏/列表圆角 */
+  --radius-sm: 10px;                         /* Apple 按钮圆角 */
+  /* 液态玻璃: 卡片用 blur(50px), 控件用 blur(30px) (无 saturate, 精确匹配 Apple) */
+  --blur-card: blur(50px);                  /* 卡片磨砂 (mw-card) */
+  --blur-control: blur(30px);               /* 控件磨砂 (mk-controls) */
+  /* 兼容旧引用 */
+  --blur: blur(50px);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body { height: 100%; overflow: hidden; }
+
+body {
+  /* Apple 字体顺序: "SF Pro" 优先 */
+  font-family: "SF Pro", -apple-system, BlinkMacSystemFont, "Helvetica Neue",
+               "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- 地图全屏 (深色背景) ---------- */
+#map {
+  position: absolute;
+  inset: 0;
+  background: #242424;
+  z-index: 1;
+}
+/* Leaflet 容器 + 瓦片背景设为透明, 避免空白地块显示蓝色 */
+.leaflet-container { background: transparent !important; }
+.leaflet-tile {
+  background: transparent !important;
+  /* 瓦片加载中不显示蓝色占位 */
+  outline: none !important;
+}
+/* 瓦片加载失败时不显示破图图标 */
+.leaflet-tile-loaded { background: transparent !important; }
+
+/* ---------- 左上角: 磨砂搜索框 (Apple 搜索栏样式) ---------- */
+.search-box {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  width: 360px;
+  height: 44px;
+  background: var(--search-bar);                /* Apple #0006 */
+  -webkit-backdrop-filter: var(--blur-card);    /* 卡片级 blur(50px) */
+  backdrop-filter: var(--blur-card);
+  border-radius: var(--radius-md);             /* Apple 16px */
+  box-shadow: var(--shadow);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  padding: 0 10px 0 40px;
+  transition: box-shadow 0.15s;
+}
+.search-box:focus-within {
+  outline: 1px solid var(--accent);           /* Apple: outline 1px 蓝边 (非 box-shadow) */
+  outline-offset: -1px;
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  color: var(--text-secondary);               /* Apple secondary-label #ebebf599 */
+}
+
+.search-box input {
+  flex: 1;
+  height: 100%;
+  border: none;
+  background: transparent;
+  font-size: 15px;
+  color: var(--text);
+  outline: none;
+}
+.search-box input::placeholder { color: var(--text-secondary); }
+
+.suggest-list {
+  position: absolute;
+  top: 50px;
+  left: 0;
+  right: 0;
+  background: #000;                            /* Apple mw-search-list 深色: #000 */
+  -webkit-backdrop-filter: blur(15px);          /* Apple mw-search-list: blur(15px) */
+  backdrop-filter: blur(15px);
+  border-radius: var(--radius-md);
+  box-shadow: 0 2px 20px rgba(255,255,255,0.05), 0 2px 12px rgba(255,255,255,0.05);  /* Apple */
+  max-height: 360px;
+  overflow-y: auto;
+  z-index: 1001;
+}
+
+.suggest-item {
+  padding: 15px 20px;
+  cursor: pointer;
+  position: relative;
+}
+.suggest-item:not(:first-child)::before {       /* Apple 分隔线 */
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 14px;
+  right: 0;
+  height: 1px;
+  background: var(--border);
+}
+.suggest-item:hover { background: rgba(255, 255, 255, 0.06); }
+.suggest-item .si-name { font-weight: 600; color: var(--text); font-size: 15px; }
+.suggest-item .si-coord { color: var(--text-secondary); font-size: 13px; margin-top: 2px; }
+
+/* ---------- 左上角: tab 面板 (Apple 卡片样式) ---------- */
+.panel-card {
+  position: absolute;
+  top: 68px;
+  left: 12px;
+  width: 360px;
+  max-height: calc(100vh - 92px);
+  background: var(--panel);                    /* 卡片级 #0009 */
+  -webkit-backdrop-filter: var(--blur-card);
+  backdrop-filter: var(--blur-card);
+  border-radius: var(--radius-md);           /* Apple 16px */
+  box-shadow: var(--shadow-lg);
+  z-index: 999;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.panel-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+}
+.tab-btn {
+  flex: 1;
+  height: 44px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 15px;
+  color: var(--text-secondary);
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s;
+}
+.tab-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+.tab-content { overflow-y: auto; flex: 1; }
+
+/* 路线规划 */
+.route-form { padding: 16px 20px; }
+
+.route-field {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+  position: relative;
+  background: var(--search-bar);            /* Apple #0006 */
+  border-radius: var(--radius-sm);
+  padding: 0 28px 0 36px;
+  height: 44px;
+}
+
+.route-dot {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.route-dot.from { background: var(--accent); }
+.route-dot.to { background: var(--danger); }
+
+.route-field input {
+  flex: 1;
+  height: 100%;
+  border: none;
+  background: transparent;
+  font-size: 15px;
+  color: var(--text);
+  outline: none;
+}
+.route-field input::placeholder { color: var(--text-secondary); }
+
+.route-clear {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 18px;
+  color: var(--text-secondary);
+  border-radius: 50%;
+}
+.route-clear:hover { background: rgba(255, 255, 255, 0.1); }
+
+.route-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.btn-primary {
+  flex: 1;
+  height: 44px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+}
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-text {
+  width: 56px;
+  height: 44px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 14px;
+}
+.btn-text:hover { color: var(--text); }
+
+.route-result {
+  margin-top: 12px;
+  padding: 12px 16px;
+  background: rgba(48, 209, 88, 0.1);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+.route-result .rr-total { font-weight: 600; color: var(--success); margin-bottom: 6px; }
+.route-result .rr-segment { padding: 4px 0; border-top: 1px solid rgba(48, 209, 88, 0.2); color: var(--text-secondary); }
+.route-result .rr-segment:first-of-type { border-top: none; }
+.route-result .seg-portal { color: #bf5af2; font-weight: 500; }
+
+/* POI 列表 */
+.category-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.cat-chip {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+.cat-chip input { display: none; }
+.cat-chip span {
+  padding: 6px 12px;
+  border-radius: 16px;
+  font-size: 13px;
+  background: var(--search-bar);
+  transition: all 0.15s;
+  color: var(--text-secondary);
+}
+.cat-chip input:checked + span {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.poi-list { padding: 0; max-height: 400px; overflow-y: auto; }
+.poi-item {
+  padding: 14px 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  position: relative;
+}
+.poi-item:not(:first-child)::before {        /* Apple 分隔线 */
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 20px;
+  right: 0;
+  height: 1px;
+  background: var(--border);
+}
+.poi-item:hover { background: rgba(255, 255, 255, 0.06); }
+.poi-item .poi-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.poi-item .poi-name { flex: 1; font-size: 15px; color: var(--text); font-weight: 400; }
+.poi-item .poi-coord { font-size: 13px; color: var(--text-secondary); }
+
+/* ---------- 右上角: Apple 风格工具栏 (圆形/药丸按钮 + 磨砂) ---------- */
+.map-tools {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+/* 包裹按钮 + 弹出菜单的容器 (提供定位上下文) */
+.tool-btn-wrap {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+}
+
+/* 通用按钮: 圆形液态玻璃 (精确匹配 Apple mk-controls: blur(30px) + #12121299) */
+.tool-btn {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  background: var(--panel-control);           /* 控件级 #12121299 */
+  -webkit-backdrop-filter: var(--blur-control); /* 控件级 blur(30px) */
+  backdrop-filter: var(--blur-control);
+  border-radius: 50%;
+  box-shadow: var(--shadow-control);           /* Apple 0.5px 细边框 */
+  cursor: pointer;
+  color: var(--text);
+  transition: background-color 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* Apple 控件图标默认 opacity 0.55, hover/active 0.85 (仅图标, 不含按钮本身) */
+.tool-btn svg, .tool-btn .icon-svg { opacity: var(--icon-opacity); transition: opacity 0.15s; }
+.tool-btn:hover {
+  background: var(--panel-control-pressed);   /* Apple 按压 #2a2a2a99 */
+}
+.tool-btn:hover svg, .tool-btn:hover .icon-svg { opacity: var(--icon-opacity-active); }
+.tool-btn:active { background: var(--panel-control-pressed); }
+
+/* 指南针: 48px 圆形 (精确匹配 Apple mk-compass) */
+.tool-btn.tool-compass {
+  width: 48px;
+  height: 48px;
+}
+.tool-btn.tool-compass svg { opacity: 1; }      /* 指南针内部已有 fill-opacity 控制 */
+
+/* 地图类型 + 定位: 横向药丸行 (Apple mk-top-right-controls: 45×24 每按钮) */
+.tool-pill-row {
+  display: flex;
+  flex-direction: row;
+  gap: 0;                                       /* Apple 两按钮紧密相连 */
+  width: 90px;                                 /* 45×2 = 90px */
+  height: 24px;
+  background: var(--panel-control);            /* 共享一个液态玻璃背景 */
+  -webkit-backdrop-filter: var(--blur-control);
+  backdrop-filter: var(--blur-control);
+  border-radius: 12px;                          /* 50% of 24 */
+  overflow: hidden;
+  box-shadow: var(--shadow-control);
+  position: relative;
+}
+.tool-pill-row .tool-btn.tool-pill {
+  width: 45px;
+  height: 24px;
+  background: transparent;                     /* 行容器统一背景 */
+  border-radius: 0;
+  box-shadow: none;
+}
+.tool-pill-row .tool-btn.tool-pill:first-child {
+  border-radius: 12px 0 0 12px;
+}
+.tool-pill-row .tool-btn.tool-pill:last-child {
+  border-radius: 0 12px 12px 0;
+  border-left: 0.5px solid var(--control-border);  /* Apple 中间分隔线 */
+}
+.tool-pill-row .tool-btn-wrap {
+  position: relative;
+  display: flex;
+}
+
+/* 维度/快照按钮: 带文字标签的药丸形 */
+.tool-btn.tool-dim {
+  width: auto;
+  height: 44px;
+  padding: 0 16px;
+  border-radius: 22px;            /* 药丸形 */
+  flex-direction: row;
+  gap: 6px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.tool-btn.tool-dim:hover { background: var(--panel-control-pressed); }
+.tool-btn.tool-dim svg { width: 18px; height: 18px; opacity: 1; }  /* 药丸按钮图标不透明 */
+.tool-btn.tool-dim .dim-label {
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+.dim-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: var(--panel-solid);
+  -webkit-backdrop-filter: var(--blur-card);
+  backdrop-filter: var(--blur-card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  min-width: 160px;
+  overflow: hidden;
+  z-index: 1001;
+  padding: 4px;
+}
+.dim-item {
+  padding: 12px 14px;
+  cursor: pointer;
+  font-size: 15px;
+  color: var(--text);
+  border-radius: var(--radius-sm);
+}
+.dim-item:hover { background: var(--accent-bg); color: var(--accent); }
+
+/* ---------- 左下角: 坐标 (磨砂) ---------- */
+.map-bottomleft {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 500;
+}
+.coord-display {
+  background: var(--panel-control);
+  -webkit-backdrop-filter: var(--blur-control);
+  backdrop-filter: var(--blur-control);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-size: 12px;
+  box-shadow: var(--shadow-control);
+  display: flex;
+  gap: 16px;
+  color: var(--text);
+}
+
+/* ---------- POI 详情卡 ---------- */
+.poi-detail {
+  position: absolute;
+  top: 68px;
+  left: 384px;
+  width: 300px;
+  background: var(--panel);                    /* 卡片级 #0009 */
+  -webkit-backdrop-filter: var(--blur-card);
+  backdrop-filter: var(--blur-card);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 998;
+  overflow: hidden;
+}
+.poi-detail .detail-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.poi-detail .detail-body { padding: 12px 20px; }
+.poi-detail .detail-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  font-size: 14px;
+}
+.poi-detail .dr-label { color: var(--text-secondary); }
+.poi-detail .detail-actions {
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+}
+.poi-detail .detail-actions button {
+  flex: 1;
+  height: 36px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+}
+.poi-detail .detail-actions button:hover { background: var(--accent-hover); }
+.poi-detail .detail-actions button.btn-delete { background: var(--danger); }
+.poi-detail .detail-actions button.btn-delete:hover { background: #ff6359; }
+
+.detail-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  font-size: 20px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  border-radius: 50%;
+}
+.detail-close:hover { background: rgba(255, 255, 255, 0.1); }
+
+/* ---------- Leaflet zoom 控件: Apple 液态玻璃矮药丸形 (右下) ---------- */
+/* 精确匹配 Apple mk-zoom-controls: 48×24 横向药丸, blur(30px) + #12121299 + 0.5px border */
+.leaflet-bottom.leaflet-right {
+  right: 12px;
+  bottom: 12px;
+  margin: 0 !important;
+  z-index: 1000;
+}
+.leaflet-control-zoom {
+  display: flex !important;
+  flex-direction: row !important;                       /* Apple: 横向排列 */
+  width: 48px !important;
+  height: 24px !important;                              /* Apple 矮药丸高度 */
+  background: var(--panel-control) !important;
+  -webkit-backdrop-filter: var(--blur-control) !important;
+  backdrop-filter: var(--blur-control) !important;
+  border-radius: 12px !important;                       /* 50% of 24 = 12px 药丸 */
+  overflow: hidden;
+  margin: 0 !important;
+  box-shadow: var(--shadow-control) !important;
+}
+.leaflet-control-zoom a {
+  width: 24px !important;                               /* 48/2 = 24px 半按钮 */
+  height: 24px !important;
+  line-height: 24px !important;
+  font-size: 16px !important;
+  color: var(--text) !important;
+  background: transparent !important;
+  border: none !important;
+  border-right: 0.5px solid var(--control-border) !important;  /* Apple 中间分隔线 */
+  opacity: var(--icon-opacity) !important;
+  transition: background-color 0.15s, opacity 0.15s !important;
+}
+.leaflet-control-zoom a:last-child { border-right: none !important; }
+.leaflet-control-zoom a:hover {
+  background: var(--panel-control-pressed) !important;
+  opacity: var(--icon-opacity-active) !important;
+  color: var(--text) !important;
+}
+.leaflet-control-zoom a.leaflet-disabled {
+  opacity: 0.2 !important;
+  cursor: default;
+}
+
+.leaflet-control-scale {
+  position: absolute !important;
+  left: 12px !important;
+  bottom: 50px !important;
+  margin: 0 !important;
+}
+.leaflet-control-scale-line {
+  background: var(--panel-control) !important;
+  -webkit-backdrop-filter: var(--blur-control);
+  backdrop-filter: var(--blur-control);
+  border-color: var(--text-secondary) !important;
+  color: var(--text) !important;
+  font-size: 11px !important;
+  box-shadow: var(--shadow-control);
+}
+
+/* 隐藏 Leaflet 默认归属 */
+.leaflet-control-attribution { display: none !important; }
+
+/* ---------- POI 标记 (Apple 大头针样式) ---------- */
+/* Apple 地图大头针: 水滴形 + 中心白色圆点, 颜色按类别区分 */
+.mc-poi-marker {
+  position: relative;
+  width: 28px;
+  height: 36px;
+}
+.mc-poi-marker::before {
+  /* 水滴形针体 (用 border-radius 50% 50% 50% 0 + 旋转实现) */
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 28px;
+  height: 28px;
+  background: var(--pin-color, var(--danger));
+  border-radius: 50% 50% 50% 0;
+  transform: translateX(-50%) rotate(-45deg);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+.mc-poi-marker::after {
+  /* 中心白色圆点 */
+  content: "";
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 10px;
+  height: 10px;
+  background: #fff;
+  border-radius: 50%;
+}
+.mc-poi-marker span {
+  display: none;   /* 不显示文字, 保持 Apple 简洁 */
+}
+
+/* POI 类别颜色 (Apple 大头针颜色) */
+.mc-poi-marker.cat-landmark { --pin-color: var(--danger); }     /* 红色 (Apple 默认) */
+.mc-poi-marker.cat-resource { --pin-color: #ff9f0a; }          /* 橙色 */
+.mc-poi-marker.cat-player { --pin-color: var(--accent); }     /* 蓝色 */
+.mc-poi-marker.cat-portal { --pin-color: #bf5af2; }           /* 紫色 */
+
+.mc-player-marker {
+  width: 16px;
+  height: 16px;
+  background: var(--success);
+  border: 3px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 6px rgba(48, 209, 88, 0.25), 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.mc-portal-marker {
+  width: 20px;
+  height: 20px;
+  background: #bf5af2;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px rgba(191, 90, 242, 0.2), 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+/* 路径起点/终点标记 */
+.mc-route-endpoint {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.3), 0 2px 4px rgba(0, 0, 0, 0.6);
+}
+.mc-route-endpoint.from { background: var(--accent); }
+.mc-route-endpoint.to { background: var(--danger); }
+
+/* 当前位置标记 (Apple 蓝点 + 脉冲动画) */
+.mc-user-location {
+  width: 18px;
+  height: 18px;
+  background: var(--accent);
+  border: 3px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 10px rgba(10, 132, 255, 0.15), 0 2px 6px rgba(0, 0, 0, 0.4);
+  animation: mc-pulse 2s ease-out infinite;
+}
+@keyframes mc-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(10, 132, 255, 0.4), 0 2px 6px rgba(0, 0, 0, 0.4); }
+  70% { box-shadow: 0 0 0 16px rgba(10, 132, 255, 0), 0 2px 6px rgba(0, 0, 0, 0.4); }
+  100% { box-shadow: 0 0 0 0 rgba(10, 132, 255, 0), 0 2px 6px rgba(0, 0, 0, 0.4); }
+}
+
+/* 地图类型弹出菜单 (Apple mk-popover: #363636 + 10px 圆角 + 1px 边框) */
+.map-type-popover {
+  position: absolute;
+  top: calc(100% + 13px);                       /* Apple: button-height + 13px */
+  right: -1px;                                  /* Apple: right:-1px */
+  background: #363636;                          /* Apple popover dark #363636 */
+  -webkit-backdrop-filter: var(--blur-card);
+  backdrop-filter: var(--blur-card);
+  border: 1px solid #5a5c64;                    /* Apple dark border #5a5c64 */
+  border-radius: 10px;                         /* Apple mk-popover: 10px */
+  box-shadow: 0 5px 10px rgba(0,0,0,0.3);       /* Apple mk-popover shadow */
+  padding: 8px;
+  min-width: 140px;
+  z-index: 1001;
+}
+.map-type-item {
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.map-type-item:hover { background: var(--accent-bg); }
+.map-type-item.disabled { color: var(--text-tertiary); cursor: not-allowed; }
+.map-type-item.disabled:hover { background: transparent; }
+.map-type-item .mt-check {
+  margin-left: auto;
+  color: var(--accent);
+  opacity: 0;
+}
+.map-type-item.active .mt-check { opacity: 1; }
+
+.hidden { display: none !important; }

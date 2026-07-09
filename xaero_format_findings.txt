@@ -1,0 +1,450 @@
+================================================================================
+XAERO'S WORLD MAP - BINARY FILE FORMAT SPECIFICATION
+================================================================================
+
+Source JAR: [Xaero的世界地图] xaeroworldmap-fabric-1.19.2-1.40.6.jar
+Decompiled with: javap -c -p -constants (Java 17.0.11)
+Analysis date: 2026-07-08
+
+Key classes analyzed:
+  - xaero.map.region.LeveledRegion        (cache.xaero read/write)
+  - xaero.map.file.MapSaveLoad            (region.xaero read/write)
+  - xaero.map.region.texture.RegionTexture (per-texture cache data)
+  - xaero.map.region.MapBlock             (per-pixel parametres bit packing)
+  - xaero.map.misc.ConsistentBitArray     (bit-packed storage primitive)
+  - xaero.map.palette.Paletted2DFastBitArrayIntStorage (biome index storage)
+
+================================================================================
+1. ON-DISK FILE NAMING & WRAPPER
+================================================================================
+
+Both cache.xaero and region.xaero files are stored on disk as ZIP archives.
+
+- On-disk cache files:  <worlddir>/XaeroWorldMap/Multiplayer_<server>/
+                        <dim>/cache/region_<x>_<z>.zip
+- On-disk region files: <worlddir>/XaeroWorldMap/Multiplayer_<server>/
+                        <dim>/region_<x>_<z>.zip
+
+Each .zip contains a SINGLE ZipEntry whose name is the file type:
+  - cache.xaero  (inside cache .zip)
+  - region.xaero (inside region .zip)
+
+The ZipOutputStream wraps a FileOutputStream on the temp file (.zip.temp),
+which is then renamed to the final .zip on success.
+
+Byte order inside the ZipEntry stream: BIG-ENDIAN (Java DataOutputStream /
+DataInputStream default). All multi-byte primitives are network byte order.
+
+================================================================================
+2. REGION.XAERO FORMAT  (per MapSaveLoad.saveRegion / loadRegion)
+================================================================================
+
+Container: ZIP entry named "region.xaero"
+Logical layout (big-endian, via DataOutputStream):
+
+  +--------------------------------------------------+
+  | Byte 0:  magic          = 255 (0xFF)             |
+  | Bytes 1-4: version      = 393224 (0x000601C8)    |   (ldc_w #800)
+  +--------------------------------------------------+
+  | CHUNK LOOP (see 2a)                              |
+  +--------------------------------------------------+
+  | Byte: terminator       = 255 (0xFF)              |
+  +--------------------------------------------------+
+
+Constant-pool evidence:
+  - "region.xaero" string constant #467
+  - sipush 255 (magic) and ldc_w #800 = 393224 (version)
+
+2a. CHUNK LOOP
+-----------------
+Region = 8x8 grid of MapTileChunk (chunk coordinates relative to region).
+For each non-empty chunk in the 8x8 grid:
+
+  write(chunkX << 4 | chunkZ)        // single byte: low 4 bits = X, high 4 bits = Z
+                                      // (chunkX, chunkZ are local 0..7 within region)
+
+  TILE LOOP (see 2b) for the 4x4 tiles inside this chunk
+
+After all chunks: write(255) terminator byte.
+
+NOTE: A chunk only writes if it contains at least one loaded tile. The loop
+skips empty chunks entirely (no entry written, no terminator per chunk).
+
+2b. TILE LOOP (per chunk, 4x4 = 16 tiles)
+-------------------------------------------
+For each tile in the chunk's 4x4 grid:
+
+  if (tile is NOT loaded):
+      writeInt(-1)                    // 4 bytes, 0xFFFFFFFF sentinel
+  else:
+      PIXEL LOOP (see 2c) for the 16x16 blocks/pixels in this tile
+      write(worldInterpretationVersion)   // 1 byte
+      writeInt(writtenCaveStart)          // 4 bytes
+      write(writtenCaveDepth)             // 1 byte
+
+Total per loaded tile trailer: 1 + 4 + 1 = 6 bytes (after the 256 pixel entries).
+
+2c. PIXEL LOOP (per tile, 16x16 = 256 pixels) - savePixel()
+--------------------------------------------------------------
+For each of the 256 blocks in the tile, savePixel() writes a packed
+representation derived from MapBlock.getParametres() (see section 4):
+
+  writeInt(parametres)               // 4 bytes packed bitfield (see section 4)
+
+Additionally, conditional writes based on parametres bit flags:
+
+  if (parametres & 0x02) != 0  (hasOverlays):
+      writeInt(numberOfOverlays)
+      for each overlay:  overlay.write(out)   // overlay-specific encoding
+                                                      (state id + extra data)
+
+  if (parametres & 0x100000) != 0  (hasBiome):
+      writeInt(biomePaletteIndex)    // index into per-region biome palette
+
+  if (parametres & 0x1000000) != 0  (height != topHeight):
+      writeInt(topHeight)            // separate topHeight value
+      write(topHeightSlopeData...)   // slope-specific extra bytes
+
+So a minimal pixel (grass, no overlays, no biome, height==topHeight) is just
+the 4-byte writeInt(parametres). A complex pixel may add 4+ bytes for biome,
+overlays, and topHeight.
+
+================================================================================
+3. CACHE.XAERO FORMAT  (per LeveledRegion.saveCacheTextures / loadCacheTextures)
+================================================================================
+
+Container: ZIP entry named "cache.xaero"
+Logical layout (big-endian, via DataOutputStream):
+
+  +--------------------------------------------------+
+  | Bytes 0-3: version      = 65560 (0x00010018)     |   (ldc_w #448)
+  +--------------------------------------------------+
+  | writeCacheMetaData()   (see 3a)                  |
+  +--------------------------------------------------+
+  | saveBiomePalette()     (see 3b)                  |
+  +--------------------------------------------------+
+  | TEXTURE LOOP (see 3c)                            |
+  +--------------------------------------------------+
+  | Byte: terminator       = 255 (0xFF)              |
+  +--------------------------------------------------+
+
+3a. writeCacheMetaData() - texture inventory
+-----------------------------------------------
+Lists every cached texture (8x8 = 64 possible per LeveledRegion) with its
+bufferedTextureVersion, so the loader can detect stale cache entries.
+
+  for each texture (i = 0..7, j = 0..7):
+      if (texture present):
+          write(i << 4 | j)               // 1 byte: texture coord within region
+          writeInt(texture.bufferedTextureVersion)   // 4 bytes
+  write(255)                              // 1 byte terminator
+
+The (i, j) here index the 8x8 grid of textures inside one LeveledRegion
+(each texture = 64x64 pixels = 4x4 chunks of 16x16 blocks).
+
+3b. saveBiomePalette() - region-wide biome palette
+-----------------------------------------------------
+A registry-keyed palette shared by all textures in the cache. Each entry is
+a Minecraft biome Identifier (e.g. "minecraft:plains").
+
+  writeInt(paletteSize)                   // 4 bytes
+  for each entry (0 .. paletteSize-1):
+      if (entry == null):
+          write(255)                      // 1 byte: null marker
+          // (loader also adds a null entry to its list)
+      else:
+          write(0)                        // 1 byte: non-null marker
+          writeUTF(biomeIdentifierString) // 2-byte length + UTF-8 bytes
+                                          // e.g. "minecraft:plains"
+
+writeUTF format: 2-byte unsigned length prefix (big-endian) followed by
+modified-UTF-8 encoded string bytes.
+
+3c. TEXTURE LOOP - per-texture pixel data
+--------------------------------------------
+For each cached texture (8x8 possible):
+
+  write(x << 4 | z)                       // 1 byte: texture coord within region
+  writeCacheMapData(texture)              // see 3d (the bulk of the data)
+
+After all textures: write(255) terminator byte.
+
+3d. writeCacheMapData() per texture  (RegionTexture.writeCacheMapData)
+------------------------------------------------------------------------
+This is the per-texture payload. A texture is 64x64 pixels (= 16x16 blocks
+per chunk x 4x4 chunks per texture).
+
+  write(colorBufferCompressed ? 1 : 0)   // 1 byte: compression flag
+  writeInt(colorBufferFormat)             // 4 bytes: GL internal format
+                                          //   typically 32856 = 0x8058 = GL_RGBA8
+  writeInt(remainingBufferLength)         // 4 bytes: byte count of color buffer
+                                          //   typically 16384 = 64*64*4 (RGBA)
+  write(colorBuffer bytes)                // N bytes: RAW ARGB/RGBA pixel data
+                                          //   NOT RLE, NOT palette-indexed at
+                                          //   pixel level. One int (4 bytes)
+                                          //   per pixel, 64x64 = 4096 ints.
+
+  writeBoolean(bufferHasLight)            // 1 byte: 0 or 1
+
+  // heightValues: ConsistentBitArray, 13 bits per entry, 4096 entries
+  // (4096 entries = 64x64 pixel grid)
+  // Layout: 13 bits packed into longs; 64/13 = 4 entries per long (with
+  // 12 leftover bits per long), so ceil(4096/4) = 1024 longs.
+  for each long in heightValues.data[]:   // 1024 iterations
+      writeLong(value)                    // 8 bytes each = 8192 bytes total
+
+  // topHeightValues: same layout (13 bits x 4096 entries = 1024 longs)
+  for each long in topHeightValues.data[]:  // 1024 iterations
+      writeLong(value)                      // 8 bytes each = 8192 bytes total
+
+  saveBiomeIndexStorage()                 // see 3e (per-texture biome palette
+                                          //   + bit-packed indices)
+
+Special case (load path, "broken texture compression fix"):
+  If level==0 AND buffer length==16384 AND compressed flag set, the loader
+  forces colorBufferFormat = 32856 (GL_RGBA8) regardless of stored value.
+  This is a backward-compat fix for an older broken write path.
+
+Pixel data layout within the 16384-byte buffer:
+  - 64x64 pixels, each 4 bytes (ARGB or RGBA - matches colorBufferFormat).
+  - Row-major: pixel (x, z) at byte offset ((z * 64) + x) * 4.
+  - Byte order within each int follows the GL format (GL_RGBA8 = RGBA).
+
+3e. saveBiomeIndexStorage() per texture  (RegionTexture.saveBiomeIndexStorage)
+-------------------------------------------------------------------------------
+Per-texture biome palette (indices into the region-wide biome palette from 3b)
+plus a bit-packed index grid. Stored via Paletted2DFastBitArrayIntStorage.
+
+  writeInt(paletteSize)                   // 4 bytes: per-texture palette size
+  for each palette entry (0 .. paletteSize-1):
+      writeInt(paletteElement)            // 4 bytes: index into region palette
+      if (paletteElement != -1):
+          writeShort(count)               // 2 bytes: usage count (or skip if -1)
+  write(1)                                // 1 byte: marker (version/end flag)
+
+  // Then the bit-packed index grid itself:
+  Paletted2DFastBitArrayIntStorage.writeData(out)
+      -> ConsistentBitArray.write(out)
+         for each long in data[]:         // see section 5 for sizing
+             writeLong(value)             // 8 bytes each
+
+Index encoding in Paletted2DFastBitArrayIntStorage:
+  - stored value 0  -> use defaultValue (no palette lookup)
+  - stored value n>0 -> palette.get(n - 1)  (1-based palette indices)
+  This saves space when many pixels share the default biome.
+
+3f. HeightValues array sizing (cave vs non-cave)
+--------------------------------------------------
+The RegionTexture constructor allocates:
+  heightValues    = new ConsistentBitArray(13, 4096)   // 13 bits per entry
+  topHeightValues = new ConsistentBitArray(13, 4096)
+
+So both arrays are 4096 entries (one per pixel in the 64x64 texture).
+13 bits per entry supports values 0..8191, sufficient for Minecraft Y range.
+
+The "586 longs" figure seen in OldFormatSupport relates to an OLDER format
+that used a smaller texture size; current format uses 1024 longs per array
+(4096 entries / 4 entries-per-long, rounded up).
+
+================================================================================
+4. MapBlock.getParametres() - PER-PIXEL BIT PACKING (section 2c)
+================================================================================
+
+Each pixel's parametres int (4 bytes) packs multiple flags and small values:
+
+  Bit layout (LSB = bit 0):
+  ------------------------------------------------------------
+  bit  0       : isNotGrass        (1 if block is NOT grass block)
+  bit  1       : hasOverlays       (1 if overlays array non-empty)
+  bits  2-7    : (unused/zero)
+  bits  8-11   : light             (4 bits, 0-15) - block light level
+  bits 12-19   : height & 0xFF     (low 8 bits of height, 0-255)
+  bit  20      : hasBiome          (0x100000 = 1048576) - biome non-null
+  bits 21-23   : (unused/zero)
+  bit  24      : height != topHeight (0x1000000 = 16777216)
+  bits 25-28   : (height >> 8) & 0x0F  (high 4 bits of height, 0-15)
+  bits 29-31   : (unused/zero)
+  ------------------------------------------------------------
+
+  Combined height value = ((bits 25-28) << 8) | (bits 12-19)
+                        = full 12-bit height (0-4095)
+
+Bytecode evidence (MapBlock.getParametres):
+  - bit 0:   if (!isGrass()) parametres |= 1
+  - bit 1:   if (getNumberOfOverlays() > 0) parametres |= 2
+  - bits 8-11:  parametres |= (light << 8)
+  - bits 12-19: parametres |= ((height & 255) << 12)
+  - bit 20:  if (biome != null) parametres |= 1048576
+  - bit 24:  if (height != topHeight) parametres |= 16777216
+  - bits 25-28: parametres |= (((height >> 8) & 15) << 25)
+
+================================================================================
+5. ConsistentBitArray - BIT-PACKED STORAGE PRIMITIVE
+================================================================================
+
+Used for heightValues, topHeightValues, and the biome index grid.
+
+Fields:
+  insideALong   = 64 / bitsPerEntry       (entries packed per long)
+  bitsPerEntry  = N                        (max 32, runtime-checked)
+  entries       = total entry count
+  long[] data   = packed storage
+  entryMask     = (1 << bitsPerEntry) - 1
+
+Layout:
+  - data[] length = ceil((entries + insideALong - 1) / insideALong)
+  - For 13 bits/entry, 4096 entries: insideALong = 4, data length = 1024 longs
+  - Entry i is stored in data[i / insideALong] at bit offset (i % insideALong) * bitsPerEntry
+
+get(index):
+  return (int) ((data[index / insideALong] >> ((index % insideALong) * bitsPerEntry)) & entryMask)
+
+set(index, value):
+  long old = data[index / insideALong]
+  long mask = ((long) entryMask) << ((index % insideALong) * bitsPerEntry)
+  data[index / insideALong] = (old & ~mask) | (((long) value & entryMask) << shift)
+
+write(DataOutputStream):
+  for each long in data[]:
+      writeLong(value)        // sequential, 8 bytes each, NO length prefix
+
+There is NO header, NO bitsPerEntry field, NO entries count written by
+ConsistentBitArray.write() itself. The reader must know bitsPerEntry and
+entries count out-of-band (from the RegionTexture constructor: 13 bits, 4096
+entries) and allocate the array before reading the longs.
+
+================================================================================
+6. COORDINATE ENCODING SUMMARY
+================================================================================
+
+Two distinct coordinate-packing schemes appear, both using a single byte with
+"x << 4 | z" layout (4 bits each, 0-15 range):
+
+  a) Chunk position within region (region.xaero, section 2a):
+        byte = chunkX << 4 | chunkZ
+        chunkX, chunkZ in 0..7  (8x8 chunks per region)
+        High nibble = Z, low nibble = X.
+
+  b) Texture position within LeveledRegion (cache.xaero, sections 3a/3c):
+        byte = i << 4 | j
+        i, j in 0..7  (8x8 textures per LeveledRegion)
+        High nibble = j (Z-axis texture index), low nibble = i (X-axis).
+
+Region/tile hierarchy (confirmed from class structure):
+  BranchLeveledRegion (parent)
+    -> LeveledRegion       : 8x8 textures  (each texture = 64x64 px)
+       -> MapRegion        : subset/level wrapper
+          -> MapTileChunk  : 8x8 chunks    (each chunk = 16x16 blocks... but
+                                             texture is 64x64 = 4x4 chunks)
+          -> MapTile       : 4x4 tiles per chunk, 16x16 blocks per tile
+          -> MapBlock      : single pixel (16x16 per tile)
+
+Reconciling the 4x4 vs 8x8:
+  - A LeveledRegion holds 8x8 textures (64 textures).
+  - Each texture covers 64x64 pixels = 4x4 chunks (since 1 chunk = 16x16 px).
+  - The "8x8 chunks" terminology in MapTileChunk refers to a different level
+    of the hierarchy (chunk-density within a larger MapRegion context).
+  - For the on-disk format, what matters:
+      * region.xaero iterates an 8x8 chunk grid (local chunkX/Z 0..7).
+      * cache.xaero iterates an 8x8 texture grid (local i/j 0..7).
+      * Each chunk contains 4x4 tiles, each tile contains 16x16 pixels.
+
+================================================================================
+7. COMPLETE BYTE-MAP SUMMARY (quick reference)
+================================================================================
+
+--- region.xaero (inside region_<x>_<z>.zip) ---
+  [1]  magic = 0xFF
+  [4]  version = 0x000601C8 (393224)
+  repeat:
+    [1]  chunkCoord = (chunkZ << 4) | chunkX      // present chunks only
+    repeat (4x4 tiles):
+      either:
+        [4]  0xFFFFFFFF                              // unloaded tile sentinel
+      or:
+        repeat (16x16 pixels):
+          [4]  parametres                            // see section 4
+          [var] conditional overlay/biome/topHeight  // see section 2c
+        [1]  worldInterpretationVersion
+        [4]  writtenCaveStart
+        [1]  writtenCaveDepth
+  [1]  terminator = 0xFF
+
+--- cache.xaero (inside region_<x>_<z>.zip in cache/ subdir) ---
+  [4]  version = 0x00010018 (65560)
+  // writeCacheMetaData:
+  repeat:
+    [1]  textureCoord = (j << 4) | i                // present textures only
+    [4]  bufferedTextureVersion
+  [1]  terminator = 0xFF
+  // saveBiomePalette (region-wide):
+  [4]  paletteSize
+  repeat (paletteSize):
+    either [1] 0xFF (null)
+    or     [1] 0x00 + [2+N] writeUTF(identifier)
+  // texture loop:
+  repeat:
+    [1]  textureCoord = (j << 4) | i
+    // writeCacheMapData:
+    [1]  compressed flag
+    [4]  colorBufferFormat (e.g. 32856 = GL_RGBA8)
+    [4]  bufferLength (e.g. 16384)
+    [N]  raw RGBA pixel bytes (64*64*4 = 16384 typical)
+    [1]  bufferHasLight boolean
+    [8 * 1024]  heightValues longs       (13 bits x 4096 entries)
+    [8 * 1024]  topHeightValues longs    (13 bits x 4096 entries)
+    // saveBiomeIndexStorage:
+    [4]  perTexturePaletteSize
+    repeat:
+      [4]  paletteElement (index into region palette, or -1)
+      [2]  count (only if paletteElement != -1)
+    [1]  marker = 0x01
+    [8 * M] bit-packed biome indices (M = ceil(4096 / (64/bitsPerEntry)) longs)
+  [1]  terminator = 0xFF
+
+================================================================================
+8. NOTES FOR IMPLEMENTING A PARSER
+================================================================================
+
+1. Both files are ZIPs: open with zipfile.ZipFile, read the single entry
+   ("cache.xaero" or "region.xaero"), wrap the bytes in io.BytesIO, then
+   use struct.unpack with big-endian format strings (">I", ">i", ">H", ">B",
+   ">h", ">q", ">s" etc.).
+
+2. Java's writeUTF(length + modified-UTF-8) differs from regular UTF-8 only
+   for NUL bytes and supplementary code points. For biome identifiers like
+   "minecraft:plains" (ASCII only), a plain utf-8 decode of the length-
+   prefixed bytes is correct. Read 2-byte unsigned length, then that many
+   bytes as UTF-8.
+
+3. Java's writeBoolean writes 1 byte: 0 or 1.
+
+4. ConsistentBitArray has NO on-disk header. The reader must construct it
+   with the known (bitsPerEntry=13, entries=4096) and then read exactly
+   ceil(4096 / (64/13)) = ceil(4096/4) = 1024 longs (8192 bytes). For the
+   biome index storage, bitsPerEntry depends on perTexturePaletteSize:
+     bitsPerEntry = max(neededBits, 1) where neededBits = ceil(log2(paletteSize+1))
+   The Paletted2DFastBitArrayIntStorage constructor computes this; a parser
+   must replicate that logic to know how many longs to read.
+
+5. The "cache.xaero" string appears ONLY in LeveledRegion.class (string
+   constant search across all 380 classes). The "region.xaero" string
+   appears ONLY in MapSaveLoad.class. These are the authoritative sources.
+
+6. Backward compatibility: OldFormatSupport.class (90936 bytes decompiled)
+   contains readers for older versions. The versions documented above
+   (cache 65560, region 393224) are the CURRENT write versions for
+   xaeroworldmap-fabric-1.19.2-1.40.6. Older caches with lower version
+   numbers will follow different layouts (e.g. different height-array sizes,
+   no biome palette, etc.) and require version-branched read code.
+
+7. Pixel color interpretation: the 4 bytes per pixel in the colorBuffer
+   follow the OpenGL internal format stored in colorBufferFormat. For
+   GL_RGBA8 (0x8058 = 32856), bytes are R, G, B, A. Note Java's byte is
+   signed; convert with (b & 0xFF) when unpacking. The mod uploads these
+   bytes directly to a GL texture via PBO, so the byte order is whatever
+   GL expects for the given format on the host platform.
+
+================================================================================
+END OF SPECIFICATION
+================================================================================

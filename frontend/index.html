@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Minecraft 在线地图</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<!-- 地图全屏 (高德风格: 地图占满视口, 控件浮动其上) -->
+<div id="map"></div>
+
+<!-- 左上角: 独立搜索框 (高德风格: 白色圆角矩形浮在地图上) -->
+<div class="search-box">
+  <span class="search-icon">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+  </span>
+  <input id="search-input" type="text" placeholder="搜索地点或输入坐标 x,z" autocomplete="off">
+  <div id="search-suggest" class="suggest-list hidden"></div>
+</div>
+
+<!-- 左上角: tab 面板 (独立浮动, 在搜索框下方, 有间距) -->
+<div class="panel-card">
+  <div class="panel-tabs">
+    <button class="tab-btn active" data-tab="route">路线</button>
+    <button class="tab-btn" data-tab="poi">地点</button>
+  </div>
+
+  <!-- 路线规划 tab -->
+  <div id="tab-route" class="tab-content">
+    <div class="route-form">
+      <div class="route-field">
+        <span class="route-dot from"></span>
+        <input id="route-from" type="text" placeholder="起点: 点击地图或选择地点" readonly>
+        <button class="route-clear" data-target="from" title="清除">×</button>
+      </div>
+      <div class="route-field">
+        <span class="route-dot to"></span>
+        <input id="route-to" type="text" placeholder="终点: 点击地图或选择地点" readonly>
+        <button class="route-clear" data-target="to" title="清除">×</button>
+      </div>
+      <div class="route-actions">
+        <button id="route-plan-btn" class="btn-primary">规划路径</button>
+        <button id="route-reset-btn" class="btn-text">清空</button>
+      </div>
+      <div id="route-result" class="route-result hidden"></div>
+    </div>
+  </div>
+
+  <!-- POI/地点 tab -->
+  <div id="tab-poi" class="tab-content hidden">
+    <div class="category-bar">
+      <label class="cat-chip"><input type="checkbox" value="landmark" checked><span>地标</span></label>
+      <label class="cat-chip"><input type="checkbox" value="resource" checked><span>资源</span></label>
+      <label class="cat-chip"><input type="checkbox" value="player" checked><span>玩家</span></label>
+      <label class="cat-chip"><input type="checkbox" value="portal" checked><span>传送门</span></label>
+    </div>
+    <div id="poi-list" class="poi-list"></div>
+  </div>
+</div>
+
+<!-- 右侧: 垂直工具栏 (高德风格: 右侧一列图标按钮) -->
+<div class="map-tools">
+  <div class="tool-btn tool-dim" id="dim-btn" title="切换维度">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
+    <span class="dim-label" id="dim-label">主世界</span>
+    <div id="dim-dropdown" class="dim-dropdown hidden">
+      <div class="dim-item" data-dim="0">主世界</div>
+      <div class="dim-item" data-dim="-1">下界</div>
+      <div class="dim-item" data-dim="1">末地</div>
+    </div>
+  </div>
+  <div class="tool-btn tool-dim" id="snapshot-btn" title="切换地图快照时间">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+    <span class="dim-label" id="snapshot-label">-</span>
+    <div id="snapshot-dropdown" class="dim-dropdown hidden"></div>
+  </div>
+  <!-- 指南针按钮 (Apple 风格: 48px 圆形, 点击重置朝北) -->
+  <button class="tool-btn tool-compass" id="compass-btn" title="重置朝北">
+    <svg width="28" height="28" viewBox="-3 -2 46 46" fill="none">
+      <circle cx="20" cy="21" r="17" fill="#fff" fill-opacity="0.12"/>
+      <path d="M20 4 L22 21 L20 20 L18 21 Z" fill="#ff453a"/>
+      <path d="M20 38 L18 21 L20 22 L22 21 Z" fill="#fff" fill-opacity="0.64"/>
+      <text x="20" y="3" text-anchor="middle" fill="#fff" fill-opacity="0.85" font-size="6" font-family="-apple-system,HelveticaNeue-Medium">N</text>
+    </svg>
+  </button>
+  <!-- 地图类型 + 定位 (Apple 风格: 横向药丸行, 45×24) -->
+  <div class="tool-pill-row">
+    <div class="tool-btn-wrap">
+      <button class="tool-btn tool-pill" id="map-type-btn" title="切换地图类型">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+      </button>
+      <div id="map-type-popover" class="map-type-popover hidden">
+        <div class="map-type-item active" data-type="standard">标准</div>
+        <div class="map-type-item disabled" data-type="satellite">卫星 (无数据)</div>
+        <div class="map-type-item disabled" data-type="hybrid">混合 (无数据)</div>
+      </div>
+    </div>
+    <button class="tool-btn tool-pill" id="locate-btn" title="定位到我">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+    </button>
+  </div>
+  <button class="tool-btn icon-only" id="fullscreen-btn" title="全屏">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+  </button>
+</div>
+
+<!-- 左下角: 坐标 + 比例尺 (浮动) -->
+<div class="map-bottomleft">
+  <div class="coord-display">
+    <span id="coord-text">坐标: -</span>
+    <span id="dim-text">维度: 主世界</span>
+  </div>
+</div>
+
+<!-- POI 详情卡 (左侧浮动, 紧贴面板右侧) -->
+<div id="poi-detail" class="poi-detail hidden">
+  <button class="detail-close" id="detail-close">×</button>
+  <div id="detail-content"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="js/map.js"></script>
+<script src="js/poi.js"></script>
+<script src="js/waypoint.js"></script>
+<script src="js/search.js"></script>
+<script src="js/routing.js"></script>
+</body>
+</html>
