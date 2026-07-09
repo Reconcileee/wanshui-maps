@@ -233,6 +233,37 @@ L.transformation(baseScale, offset_x, -baseScale, -offset_z)
 ]
 ```
 
+## GitHub Pages 部署
+
+项目支持静态化部署到 GitHub Pages，无需后端。静态站点由 `build_static.py` 生成到 `tobu4th/` 目录。
+
+**线上地址**：https://reconcileee.github.io/wanshui-maps/tobu4th
+
+### 构建静态站点
+
+```powershell
+python build_static.py
+```
+
+产物结构：
+- `tobu4th/index.html` + `css/` + `js/` — 前端（相对路径，兼容子路径部署）
+- `tobu4th/data/*.json` — 静态数据（dimensions/pois/players/portals + 动态生成的 snapshots/waypoints）
+- `tobu4th/tiles/<snapshot_id>/0/<x>/<y>.webp` — 瓦片（按 offset 对齐网格，**无损 WebP** 格式）
+
+### 瓦片格式：无损 WebP
+
+为加速 GitHub Pages 传输，静态站点的瓦片采用**无损 WebP** 格式（Pillow `lossless=True`），相比 PNG 平均减小约 37.5% 体积（本项目 242MB → 151MB），且无画质损失。
+
+- 前端 `map.js` 瓦片 URL 后缀为 `.webp`
+- 本地 FastAPI 开发仍用 PNG（`tile_server.py` 原样返回 PNG），WebP 仅用于静态站点
+- 重新构建后需提交 `tobu4th/` 并推送，GitHub Pages 会自动重新部署
+
+### 部署配置
+
+- `.nojekyll` — 跳过 Jekyll 处理（必需，否则 `_` 开头的文件被忽略）
+- 根 `index.html` — 重定向到 `tobu4th/`
+- `.gitignore` — 排除 MC 游戏实例、反编译源码、原始瓦片源（`map_source/`）、Xaero 路径点源等
+
 ## 许可
 
 本项目仅用于个人学习与 Minecraft 社区地图展示。

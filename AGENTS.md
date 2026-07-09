@@ -203,6 +203,10 @@ curl.exe -s -o NUL -w "%{size_download}" http://127.0.0.1:8000/api/tiles/2026-07
 | `data/pois.json` | POI 列表 |
 | `data/portals.json` | 传送门列表 |
 | `scripts/extract_xaero_cache.py` | （归档）旧 Xaero cache.xaero 解析器 |
+| `build_static.py` | 生成 GH Pages 静态站点到 `tobu4th/`：复制前端 + 烘焙 JSON + 瓦片转无损 WebP |
+| `.nojekyll` | GH Pages 跳过 Jekyll 处理（必需） |
+| `index.html`（根） | 重定向到 `tobu4th/` |
+| `.gitignore` | 排除 MC 游戏实例、反编译、map_source、waypoint_source 等 |
 
 ## 已知坑点（避免重复踩）
 
@@ -229,6 +233,10 @@ curl.exe -s -o NUL -w "%{size_download}" http://127.0.0.1:8000/api/tiles/2026-07
 9. **缩放范围与 tileLayer 配置**：tileLayer 的 `minZoom`/`maxZoom` 必须与 map 一致（当前均为 -4 到 5），否则在边界 zoom 瓦片层会消失。`maxNativeZoom = minNativeZoom = max_zoom`（=0）确保非原生 zoom 复用原生瓦片。
 
 10. **下拉菜单互斥**：维度、快照、地图类型三个下拉/弹出菜单需互斥——打开一个时关闭其他。`initToolbar` 中的 `document.addEventListener('click')` 统一关闭所有，各按钮的 `click` handler 需 `stopPropagation` 并手动关闭其他菜单。
+
+11. **静态站点瓦片格式（WebP）**：`build_static.py` 将 PNG 转为**无损 WebP**（Pillow `lossless=True`）以加速 GH Pages 传输（平均减小约 37.5%）。前端 `map.js` 瓦片 URL 后缀为 `.webp`。本地 FastAPI 开发仍用 PNG（`tile_server.py` 原样返回）。修改瓦片相关逻辑时需同时注意两套路径：本地 `.png`（`tile_server.py`）与静态 `.webp`（`build_static.py` 输出 + `map.js` 引用）。重新构建静态站点后需提交 `tobu4th/` 并推送，GH Pages 才会更新。
+
+12. **GitHub Pages 子路径部署**：项目部署在 `https://reconcileee.github.io/wanshui-maps/tobu4th`（含子路径 `/wanshui-maps/tobu4th`），前端所有资源引用必须用**相对路径**（如 `css/style.css`、`js/map.js`、`data/pois.json`、`tiles/...`），不能用绝对路径 `/css/...`。`.nojekyll` 必须存在，否则 Jekyll 会忽略 `_` 开头的文件/目录。
 
 ## 用户偏好
 
