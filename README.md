@@ -233,11 +233,13 @@ L.transformation(baseScale, offset_x, -baseScale, -offset_z)
 ]
 ```
 
-## GitHub Pages 部署
+## 静态站点部署
 
-项目支持静态化部署到 GitHub Pages，无需后端。静态站点由 `build_static.py` 生成到 `tobu4th/` 目录。
+项目支持静态化部署，无需后端。静态站点由 `build_static.py` 生成到 `tobu4th/` 目录。
 
-**线上地址**：https://reconcileee.github.io/wanshui-maps/tobu4th
+**线上地址**（Cloudflare Pages，推荐，国内访问快）：https://wanshui-maps.pages.dev/tobu4th/
+
+备用地址（GitHub Pages，国内访问慢）：https://reconcileee.github.io/wanshui-maps/tobu4th
 
 ### 构建静态站点
 
@@ -252,17 +254,35 @@ python build_static.py
 
 ### 瓦片格式：无损 WebP
 
-为加速 GitHub Pages 传输，静态站点的瓦片采用**无损 WebP** 格式（Pillow `lossless=True`），相比 PNG 平均减小约 37.5% 体积（本项目 242MB → 151MB），且无画质损失。
+静态站点的瓦片采用**无损 WebP** 格式（Pillow `lossless=True`），相比 PNG 平均减小约 37.5% 体积（本项目 242MB → 151MB），且无画质损失。
 
 - 前端 `map.js` 瓦片 URL 后缀为 `.webp`
 - 本地 FastAPI 开发仍用 PNG（`tile_server.py` 原样返回 PNG），WebP 仅用于静态站点
-- 重新构建后需提交 `tobu4th/` 并推送，GitHub Pages 会自动重新部署
 
-### 部署配置
+### 部署到 Cloudflare Pages（推荐）
+
+国内访问速度优于 GitHub Pages，因 Cloudflare 在全球（含亚太）有 CDN 节点。
+
+**首次配置**（一次性）：
+```powershell
+npx wrangler@latest login      # 浏览器登录 Cloudflare 账号
+npx wrangler@latest pages project create wanshui-maps --production-branch main
+```
+
+**重新部署**（每次更新静态站点后）：
+```powershell
+python build_static.py
+npx wrangler@latest pages deploy tobu4th --project-name wanshui-maps --commit-dirty=true --branch main
+```
+
+部署完成后访问 https://wanshui-maps.pages.dev/tobu4th/
+
+### 部署到 GitHub Pages（备用）
 
 - `.nojekyll` — 跳过 Jekyll 处理（必需，否则 `_` 开头的文件被忽略）
 - 根 `index.html` — 重定向到 `tobu4th/`
 - `.gitignore` — 排除 MC 游戏实例、反编译源码、原始瓦片源（`map_source/`）、Xaero 路径点源等
+- 重新构建后需提交 `tobu4th/` 并 `git push origin main`，GitHub Pages 会自动重新部署
 
 ## 许可
 

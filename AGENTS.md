@@ -238,6 +238,10 @@ curl.exe -s -o NUL -w "%{size_download}" http://127.0.0.1:8000/api/tiles/2026-07
 
 12. **GitHub Pages 子路径部署**：项目部署在 `https://reconcileee.github.io/wanshui-maps/tobu4th`（含子路径 `/wanshui-maps/tobu4th`），前端所有资源引用必须用**相对路径**（如 `css/style.css`、`js/map.js`、`data/pois.json`、`tiles/...`），不能用绝对路径 `/css/...`。`.nojekyll` 必须存在，否则 Jekyll 会忽略 `_` 开头的文件/目录。
 
+13. **Cloudflare Pages 部署（推荐, 国内访问更快）**：除 GitHub Pages 外，项目同时部署到 Cloudflare Pages（访问地址 `https://wanshui-maps.pages.dev/tobu4th/`）。CF 在全球含亚太有 CDN 节点，国内访问速度优于 GH Pages。部署命令：`npx wrangler@latest pages deploy tobu4th --project-name wanshui-maps --commit-dirty=true --branch main`。首次需 `wrangler login` + `pages project create`。相对路径设计同时兼容两种部署。CF Pages 首次部署后可能出现短暂 522（CDN 同步中），等待 1-2 分钟后恢复。
+
+14. **wrangler OAuth 登录**：`wrangler login` 通过 OAuth 浏览器流程授权，回调到 `localhost:8976/oauth/callback`。非交互环境（如 CI）无法使用，需改用 `CLOUDFLARE_API_TOKEN` 环境变量。登录后凭证保存在 `C:\Users\<user>\AppData\Roaming\xdg.config\.wrangler\`。
+
 ## 用户偏好
 
 - 沟通语言：中文
