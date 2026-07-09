@@ -237,7 +237,7 @@ L.transformation(baseScale, offset_x, -baseScale, -offset_z)
 
 项目支持静态化部署，无需后端。静态站点由 `build_static.py` 生成到 `tobu4th/` 目录。
 
-**线上地址**（Cloudflare Pages，推荐，国内访问快）：https://wanshui-maps.pages.dev/tobu4th/
+**线上地址**（Cloudflare Pages，推荐，国内访问快）：https://wanshui-maps.pages.dev/
 
 备用地址（GitHub Pages，国内访问慢）：https://reconcileee.github.io/wanshui-maps/tobu4th
 
@@ -275,7 +275,9 @@ python build_static.py
 npx wrangler@latest pages deploy tobu4th --project-name wanshui-maps --commit-dirty=true --branch main
 ```
 
-部署完成后访问 https://wanshui-maps.pages.dev/tobu4th/
+部署完成后访问 https://wanshui-maps.pages.dev/
+
+> **注意**：CF Pages 部署的是 `tobu4th/` 目录，其内容即为站点根，因此访问地址是根路径 `https://wanshui-maps.pages.dev/`，**不要带 `/tobu4th`**。带子路径会导致 CF 把所有请求 fallback 到 index.html，JS 拿到 HTML 而非 JSON，地图只显示按钮无瓦片。
 
 ### 部署到 GitHub Pages（备用）
 
